@@ -1,0 +1,267 @@
+---
+title: "Time series"
+author: "Rehan Khan"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library("stringr")
+library("forecast")
+
+inp <- "/home/rehankhan/Desktop/Rahul sir/Project"
+inf <- str_glue("{inp}/ADONLY_cleaned.csv")
+tb <- read.csv(inf, header = T)
+
+## First, rearrange the data for one feature in an increasing order of time points
+X <- tb$lh_Precuneus_NumVert
+n_rows <- length(X)/4
+M <- matrix(X, 4, n_rows)
+M1 <- matrix(0, 4, n_rows)
+M1[1, ] <- M[4, ] 
+M1[2, ] <- M[1, ] 
+M1[3, ] <- M[2, ] 
+M1[4, ] <- M[3, ]
+
+M2 <- t(M1)
+imputed_values <- 0
+
+## First, impute the data point at the missing point using spline interpolation
+for(i in 1:nrow(M2)){
+  yy <- M2[i,]
+  xx <- c(0,1,2,4)
+  imputed <- stats::spline(x = xx, y = yy, xout = 3)
+  imputed_values[i] <- imputed$y
+}
+
+M3 <- matrix(0, n_rows, 5)
+
+M3[ ,1:3] <- M2[ ,1:3]
+M3[ ,4] <- imputed_values
+M3[ ,5] <- M2[ ,4]
+
+## Next fit an ARIMA model
+fitted_values <- matrix(0, nrow(M3), ncol(M3))
+
+for(i in 1:nrow(fitted_values)){
+  xx <- M3[i, ]
+  res <- auto.arima(xx)
+  fitted_values[i, ] <- res$fitted
+}
+
+# # function for plotting future forecasting for 5 time points (feature and patient specific)
+forecast_values <- forecast(res, h = 5)
+plot(forecast_values)
+# plot(forecast_values,
+#      main = paste("ARIMA Forecast for Subject", i, "with h =", 5),
+#      xlab = "Time (Years)",
+#      ylab = "Brain Feature Value",
+#      col = "blue")
+
+# ## Correlation between the observed and fitted measurement by the time series model
+# print(cor(M3[,5], fitted_values[ ,5]))
+# 
+# #--------------------------------------------------------------------------#
+# 
+# # True and predicted values at 24 months
+# y_true <- M3[, 5]
+# y_pred <- fitted_values[, 5]
+# 
+# # Pearson correlation (already computed)
+# R <- cor(y_true, y_pred)
+# # R-squared
+# R2 <- R^2
+# # MSE
+# MSE <- mean((y_true - y_pred)^2)
+# # RMSE
+# RMSE <- sqrt(MSE)
+# # MAE
+# MAE <- mean(abs(y_true - y_pred))
+# #MAPE
+# mape <- mean(abs((y_true - y_pred) / y_true), na.rm = TRUE) * 100
+# 
+# cat("R =", R, "\n")
+# cat("R-squared =", R2, "\n")
+# cat("MSE =", MSE, "\n")
+# cat("RMSE =", RMSE, "\n")
+# cat("MAE =", MAE, "\n")
+# cat("MAPE =", mape, "%\n")
+
+
+```
+
+```{r}
+library("stringr")
+library("forecast")
+
+# Set file paths
+inp <- "/home/rehankhan/Desktop/Rahul sir/Project"
+inf <- str_glue("{inp}/ADONLY_cleaned.csv")
+tb <- read.csv(inf, header = TRUE)
+
+# Rearranging data
+X <- tb$rh_Precuneus_GausCurv
+n_rows <- length(X)/4
+M <- matrix(X, 4, n_rows)
+M1 <- matrix(0, 4, n_rows)
+M1[1, ] <- M[4, ] 
+M1[2, ] <- M[1, ] 
+M1[3, ] <- M[2, ] 
+M1[4, ] <- M[3, ]
+
+M2 <- t(M1)
+
+# Impute missing point (at time 3) using spline interpolation
+imputed_values <- numeric(n_rows)
+for(i in 1:nrow(M2)){
+  yy <- M2[i, ]
+  xx <- c(0,1,2,4)
+  imputed <- stats::spline(x = xx, y = yy, xout = 3)
+  imputed_values[i] <- imputed$y
+}
+
+# Final matrix with 5 time points (0,1,2,3-imputed,4)
+M3 <- matrix(0, n_rows, 5)
+M3[, 1:3] <- M2[, 1:3]
+M3[, 4] <- imputed_values
+M3[, 5] <- M2[, 4]
+
+# Create folder for plots if it doesn't exist
+output_dir <- str_glue("{inp}/Forecast_Plots")
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir)
+}
+
+# Fit ARIMA for each patient and save forecast plot
+for(i in 1:nrow(M3)){
+  ts_data <- M3[i, ]
+  model <- auto.arima(ts_data)
+  fc <- forecast(model, h = 3)
+
+  png(filename = str_glue("{output_dir}/Subject_{i}_forecast.png"), width = 800, height = 600)
+  plot(fc,
+       main = paste("ARIMA Forecast for Subject", i),
+       xlab = "Time Point",
+       ylab = "Brain Feature Value",
+       col = "blue")
+  dev.off()
+}
+
+
+```
+
+```{r}
+library("stringr")
+library("forecast")
+library("ggplot2")
+
+inp <- "/home/rehankhan/Desktop/Rahul sir/Project"
+inf <- str_glue("{inp}/ADONLY_cleaned.csv")
+tb <- read.csv(inf, header = TRUE)
+
+# Extract feature and reshape
+X <- tb$lh_Precuneus_NumVert
+n_rows <- length(X) / 4
+M <- matrix(X, 4, n_rows)
+
+# Rearranged based on time: assumed order was 4, 0, 6, 12 months
+M1 <- matrix(0, 4, n_rows)
+M1[1, ] <- M[4, ]  # 0 month
+M1[2, ] <- M[1, ]  # 6 months
+M1[3, ] <- M[2, ]  # 12 months
+M1[4, ] <- M[3, ]  # 24 months
+
+# Transpose: each row = patient time series
+M2 <- t(M1)
+
+# Impute 18-month value (index 4) using spline interpolation
+imputed_values <- numeric(n_rows)
+for (i in 1:n_rows) {
+  yy <- M2[i, ]
+  xx <- c(0, 6, 12, 24)
+  imputed <- stats::spline(x = xx, y = yy, xout = 18)
+  imputed_values[i] <- imputed$y
+}
+
+# Combine into full time series: 0, 6, 12, **18 (imputed)**, 24
+M3 <- cbind(M2[, 1:3], imputed_values, M2[, 4])
+
+# Initialize forecast matrix
+fitted_matrix <- matrix(0, nrow = n_rows, ncol = 10)  # original 5 + 5 forecast
+forecast_horizon <- 5
+
+# Time points (in months)
+time_points <- c(0, 6, 12, 18, 24)
+
+# Loop through patients
+for (i in 1:n_rows) {
+  ts_data <- ts(M3[i, ], start = 0, frequency = 2)  # 6-month interval → freq = 2 per year
+  
+  # Optional transformation: log or diff
+  # ts_data <- diff(log(ts_data + 1)) # only if needed
+  
+  fit <- auto.arima(ts_data, seasonal = FALSE, stepwise = FALSE, approximation = FALSE)
+  forecast_values <- forecast(fit, h = forecast_horizon)
+  
+  # Save full fitted + forecasted values
+  fitted_matrix[i, 1:5] <- fit$fitted
+  fitted_matrix[i, 6:10] <- as.numeric(forecast_values$mean)
+  
+  # Plot with ggplot
+  df_plot <- data.frame(
+    Time = c(time_points, 30, 36, 42, 48, 54),
+    Value = c(as.numeric(ts_data), as.numeric(forecast_values$mean)),
+    Type = c(rep("Observed", 5), rep("Forecast", 5))
+  )
+  
+  gg <- ggplot(df_plot, aes(x = Time, y = Value, color = Type)) +
+    geom_line(size = 1.2) +
+    geom_point(size = 2) +
+    ggtitle(paste("Patient", i, "- Forecast")) +
+    theme_minimal() +
+    scale_x_continuous(breaks = seq(0, 54, 6)) +
+    labs(x = "Months", y = "Feature Value")
+  
+  print(gg)
+  
+  # Optionally: pause for visualizing each patient
+  # readline("Press [enter] to continue")
+}
+
+
+# Actual values at 24 months
+actual_24 <- M2[, 4]
+
+# Predicted values at 24 months (from ARIMA fitted)
+predicted_24 <- fitted_matrix[, 5]
+
+# Remove NA values if any
+valid_idx <- which(!is.na(actual_24) & !is.na(predicted_24))
+actual_24 <- actual_24[valid_idx]
+predicted_24 <- predicted_24[valid_idx]
+
+# Correlation
+correlation <- cor(actual_24, predicted_24, method = "pearson")
+
+# RMSE
+rmse <- sqrt(mean((actual_24 - predicted_24)^2))
+
+# MAE
+mae <- mean(abs(actual_24 - predicted_24))
+
+# MAPE (avoid division by zero)
+mape <- mean(abs((actual_24 - predicted_24) / actual_24)) * 100
+
+# Print results
+cat("Evaluation metrics for 24-month predictions:\n")
+cat(sprintf("Correlation: %.4f\n", correlation))
+cat(sprintf("RMSE: %.4f\n", rmse))
+cat(sprintf("MAE: %.4f\n", mae))
+cat(sprintf("MAPE: %.2f%%\n", mape))
+
+
+```
