@@ -35,7 +35,7 @@ This project applies radiomic feature analysis of the precuneus and fusiform gyr
 ├── AD_classification_script.py           # Random forest models for all group pairs
 ├── AD_TimeSeries_Script.Rmd              # Time-series model (ARIMA) and regression in R
 ├── AD_LinearRegression_script.html       # HTML output of linear regression analysis
-├── manuscript blind (2).docx             # Associated manuscript with results and discussion
+
 ```
 
 ## 🚀 Getting Started
